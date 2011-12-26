@@ -14,6 +14,8 @@ Current status:
 
 ## Using
 
+**Note: due to mistake of mine, currently only latest `weekly` Go language release is supported.**
+
 To build standalone with supplied example file:
 
 	make
