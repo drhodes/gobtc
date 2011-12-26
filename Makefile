@@ -7,11 +7,14 @@ GOFILES:=\
 	src/server.go\
 	src/protocol.go\
 
+GOFILESOTHER:=\
+	example.go\
+
 all: package
 
 
 GOFMT=gofmt
-BADFMT:=$(shell $(GOFMT) -l $(GOFILES) $(CGOFILES) $(wildcard *_test.go) 2> /dev/null)
+BADFMT:=$(shell $(GOFMT) -l $(GOFILES) $(CGOFILES) $(GOFILESOTHER) $(wildcard *_test.go) 2> /dev/null)
 
 gofmt: $(BADFMT)
 	@for F in $(BADFMT); do $(GOFMT) -w $$F && echo $$F; done
