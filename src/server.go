@@ -73,35 +73,40 @@ func (s *Server) Wait() {
 
 func (s *Server) peerHandler() {
 	var peers *list.List = list.New()
+	defer func() {
+		s.waitListenerHandler <- true
+		recover()
+	}()
 
-	for {
-		select {
-		case peer := <- s.incomingPeers:
-			if (peers.Len() >= s.maxPeers) {
-				peer.conn.Close();
-			}
+	func () {
+		for {
+			select {
+			case peer := <- s.incomingPeers:
+				if (peers.Len() >= s.maxPeers) {
+					peer.conn.Close();
+				}
 
-			peers.PushBack(peer)
-			s.log.Printf("Added peer %s", peer.conn.RemoteAddr())
-			go peer.handler()
+				peers.PushBack(peer)
+				s.log.Printf("Added peer %s", peer.conn.RemoteAddr())
+				go peer.handler()
 
-		case peer := <- s.quitingPeers:
-			// TODO: remove peer
-			found := false
-			for e := peers.Front(); e != nil; e = e.Next() {
-				tpeer := e.Value.(*Peer);
-				if tpeer == peer {
-					peers.Remove(e);
-					s.log.Printf("Removed peer %s", peer.conn.RemoteAddr())
-					found = true
+			case peer := <- s.quitingPeers:
+				// TODO: remove peer
+				found := false
+				for e := peers.Front(); e != nil; e = e.Next() {
+					tpeer := e.Value.(*Peer);
+					if tpeer == peer {
+						peers.Remove(e);
+						s.log.Printf("Removed peer %s", peer.conn.RemoteAddr())
+						found = true
+					}
+				}
+				if (!found) {
+					s.log.Printf("assert error: quiting peer not found on the list")
 				}
 			}
-			if (!found) {
-				s.log.Printf("assert error: quiting peer not found on the list")
-			}
 		}
-	}
-	s.waitPeerHandler <- true
+	}()
 }
 
 func (s *Server) AddPeer(conn net.Conn) {
@@ -115,6 +120,10 @@ func (s *Server) AddPeer(conn net.Conn) {
 
 func (s *Server) listenerHandler() {
 	s.log.Printf("Listening on %s", s.listener.Addr())
+	defer func() {
+		s.waitListenerHandler <- true
+	}()
+
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
@@ -122,5 +131,4 @@ func (s *Server) listenerHandler() {
 		}
 		s.AddPeer(conn)
 	}
-	s.waitListenerHandler <- true
 }

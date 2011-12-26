@@ -21,8 +21,12 @@
 package gobtc
 
 import (
+	"bytes"
 	"net"
+	"github.com/kr/pretty.go"
 )
+
+type msgHandlerFunc func (peer *Peer, header *MsgHeader) error
 
 
 type Peer struct {
@@ -31,17 +35,55 @@ type Peer struct {
 	quit chan bool
 }
 
+type SupportedMsg struct {
+	signature [12]byte
+	handler msgHandlerFunc
+}
+
+
+var supportedMsgs = []SupportedMsg{
+	{
+		versionCmdSig,
+		handleVersionCmd,
+	},
+}
+
+func handleVersionCmd(peer *Peer, header *MsgHeader) error {
+	cmdHeader := new(VersionCmdHeader)
+
+	err := parseVersionMsg(peer.conn, cmdHeader)
+
+	if err == nil {
+		peer.server.log.Printf("%+v", pretty.Formatter(cmdHeader))
+	}
+
+	return err
+}
+
 func (peer *Peer) handler() {
+	var msgHeader MsgHeader
+	mainLoop:
 	for {
-		var buf [64]byte
-		count, err := peer.conn.Read(buf[:])
-
-		// TODO: handle bytes here
-		count++
-
-		if err != nil {
-			break;
+		if err := parseMsgHeader(peer.conn, &msgHeader); err != nil {
+			break
 		}
+
+		peer.server.log.Printf("%+v", pretty.Formatter(&msgHeader))
+		// TODO: validate header
+
+
+		for _, command := range supportedMsgs {
+			if bytes.Compare(command.signature[:], msgHeader.Command[:]) == 0 {
+				err := command.handler(peer, &msgHeader)
+				if err != nil {
+					peer.server.log.Printf("Error %s", err)
+					break mainLoop
+				}
+				continue mainLoop
+			}
+		}
+		peer.server.log.Printf("unknown command: %s!", msgHeader.Command)
+		break
 	}
 	peer.server.quitingPeers <- peer
 }

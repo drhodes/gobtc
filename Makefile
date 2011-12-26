@@ -5,6 +5,7 @@ TARG:=github.com/dpc/gobtc
 GOFILES:=\
 	src/peer.go\
 	src/server.go\
+	src/protocol.go\
 
 all: package
 

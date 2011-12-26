@@ -28,7 +28,7 @@ import (
 
 var listener net.Listener
 
-var listenAddr = flag.String("addr", ":8883", "listen address")
+var listenAddr = flag.String("addr", ":8333", "listen address")
 
 
 func main() {
