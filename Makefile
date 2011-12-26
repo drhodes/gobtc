@@ -12,11 +12,15 @@ GOFILESOTHER:=\
 
 all: package
 
+example.go: | example.go.example
+	ln -s example.go.example example.go
+
+
 
 GOFMT=gofmt
 BADFMT:=$(shell $(GOFMT) -l $(GOFILES) $(CGOFILES) $(GOFILESOTHER) $(wildcard *_test.go) 2> /dev/null)
 
-gofmt: $(BADFMT)
+gofmt: $(BADFMT) example.go
 	@for F in $(BADFMT); do $(GOFMT) -w $$F && echo $$F; done
 
 
@@ -28,7 +32,7 @@ endif
 
 include $(GOROOT)/src/Make.pkg
 
-run: _obj/$(TARG).a
+run: example.go _obj/$(TARG).a
 	$(GC) -I_obj -o example.$(O) example.go
 	$(LD) -L_obj -o example example.$(O)
 	./example
