@@ -3,9 +3,9 @@ include $(GOROOT)/src/Make.inc
 TARG:=github.com/dpc/gobtc
 
 GOFILES:=\
-	src/peer.go\
-	src/server.go\
-	src/protocol.go\
+	peer.go\
+	server.go\
+	protocol.go\
 
 GOFILESOTHER:=\
 	example.go\
