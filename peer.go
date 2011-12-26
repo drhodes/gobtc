@@ -21,7 +21,6 @@ package gobtc
 
 import (
 	"bytes"
-	"github.com/kr/pretty.go"
 	"net"
 )
 
@@ -110,7 +109,7 @@ mainLoop:
 			break mainLoop
 		}
 
-		peer.server.log.Printf("%+v", pretty.Formatter(&msgHeader))
+		peer.server.log.Printf("%+v", &msgHeader)
 
 		if peer.server.magic != msgHeader.Magic {
 			// TODO: is this gentle enough?
@@ -142,7 +141,7 @@ func handleVersionMsg(peer *Peer, msgHeader *MsgHeader) error {
 		return err
 	}
 
-	peer.server.log.Printf("%+v", pretty.Formatter(cmdHeader))
+	peer.server.log.Printf("%+v", cmdHeader)
 
 	peer.versionKnown = true
 	peer.version = cmdHeader.Version
