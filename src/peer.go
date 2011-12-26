@@ -17,29 +17,26 @@
  * MA 02110-1301  USA
  */
 
-
 package gobtc
 
 import (
 	"bytes"
-	"net"
 	"github.com/kr/pretty.go"
+	"net"
 )
 
-type msgHandlerFunc func (peer *Peer, header *MsgHeader) error
-
+type msgHandlerFunc func(peer *Peer, header *MsgHeader) error
 
 type Peer struct {
 	server *Server
-	conn net.Conn
-	quit chan bool
+	conn   net.Conn
+	quit   chan bool
 }
 
 type SupportedMsg struct {
 	signature [12]byte
-	handler msgHandlerFunc
+	handler   msgHandlerFunc
 }
-
 
 var supportedMsgs = []SupportedMsg{
 	{
@@ -62,7 +59,7 @@ func handleVersionCmd(peer *Peer, header *MsgHeader) error {
 
 func (peer *Peer) handler() {
 	var msgHeader MsgHeader
-	mainLoop:
+mainLoop:
 	for {
 		if err := parseMsgHeader(peer.conn, &msgHeader); err != nil {
 			break
@@ -70,7 +67,6 @@ func (peer *Peer) handler() {
 
 		peer.server.log.Printf("%+v", pretty.Formatter(&msgHeader))
 		// TODO: validate header
-
 
 		for _, command := range supportedMsgs {
 			if bytes.Compare(command.signature[:], msgHeader.Command[:]) == 0 {
@@ -87,5 +83,3 @@ func (peer *Peer) handler() {
 	}
 	peer.server.quitingPeers <- peer
 }
-
-

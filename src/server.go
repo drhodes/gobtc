@@ -17,24 +17,23 @@
  * MA 02110-1301  USA
  */
 
-
 package gobtc
 
 import (
-	"net"
-	"log"
-	"os"
 	"container/list"
+	"log"
+	"net"
+	"os"
 )
 
 type Server struct {
-	waitPeerHandler chan bool
+	waitPeerHandler     chan bool
 	waitListenerHandler chan bool
-	incomingPeers chan *Peer
-	quitingPeers chan *Peer
-	listener net.Listener
-	log *log.Logger
-	maxPeers int
+	incomingPeers       chan *Peer
+	quitingPeers        chan *Peer
+	listener            net.Listener
+	log                 *log.Logger
+	maxPeers            int
 }
 
 func New(addr string) (*Server, error) {
@@ -55,20 +54,18 @@ func New(addr string) (*Server, error) {
 	return s, nil
 }
 
-
 func (s *Server) Start() {
 	go s.peerHandler()
 	go s.listenerHandler()
 }
-
 
 func (s *Server) SetLogger(log *log.Logger) {
 	s.log = log
 }
 
 func (s *Server) Wait() {
-	<- s.waitPeerHandler
-	<- s.waitListenerHandler
+	<-s.waitPeerHandler
+	<-s.waitListenerHandler
 }
 
 func (s *Server) peerHandler() {
@@ -78,30 +75,30 @@ func (s *Server) peerHandler() {
 		recover()
 	}()
 
-	func () {
+	func() {
 		for {
 			select {
-			case peer := <- s.incomingPeers:
-				if (peers.Len() >= s.maxPeers) {
-					peer.conn.Close();
+			case peer := <-s.incomingPeers:
+				if peers.Len() >= s.maxPeers {
+					peer.conn.Close()
 				}
 
 				peers.PushBack(peer)
 				s.log.Printf("Added peer %s", peer.conn.RemoteAddr())
 				go peer.handler()
 
-			case peer := <- s.quitingPeers:
+			case peer := <-s.quitingPeers:
 				// TODO: remove peer
 				found := false
 				for e := peers.Front(); e != nil; e = e.Next() {
-					tpeer := e.Value.(*Peer);
+					tpeer := e.Value.(*Peer)
 					if tpeer == peer {
-						peers.Remove(e);
+						peers.Remove(e)
 						s.log.Printf("Removed peer %s", peer.conn.RemoteAddr())
 						found = true
 					}
 				}
-				if (!found) {
+				if !found {
 					s.log.Printf("assert error: quiting peer not found on the list")
 				}
 			}
