@@ -25,8 +25,8 @@ import (
 	"io"
 )
 
-const BITCOIN_MAIN = 0xD9B4BEF9
-const BITCOIN_TESTNET = 0xDAB5BFFA
+const MAGIC_MAIN = 0xD9B4BEF9
+const MAGIC_TESTNET = 0xDAB5BFFA
 
 var versionCmdSig = [12]byte{'v', 'e', 'r', 's', 'i', 'o', 'n', 0, 0, 0, 0, 0}
 var verackCmdSig = [12]byte{'v', 'e', 'r', 'a', 'c', 'k', 0, 0, 0, 0, 0, 0}
@@ -56,7 +56,7 @@ type VersionCmdHeader struct {
 	StartHeight   int32
 }
 
-func parseEach(reader io.Reader, items []interface{}) error {
+func readEach(reader io.Reader, items []interface{}) error {
 	for _, item := range items {
 		if err := binary.Read(reader, binary.LittleEndian, item); err != nil {
 			return err
@@ -65,21 +65,35 @@ func parseEach(reader io.Reader, items []interface{}) error {
 	return nil
 }
 
-func parse(reader io.Reader, item interface{}) error {
-	return parseEach(reader, []interface{}{item})
+func writeEach(writer io.Writer, items []interface{}) error {
+	for _, item := range items {
+		if err := binary.Write(writer, binary.LittleEndian, item); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func parseNetAddr(reader io.Reader, addr *NetAddr, version int32, isVersionCmd bool) error {
+func read(reader io.Reader, item interface{}) error {
+	return readEach(reader, []interface{}{item})
+}
+
+func write(writer io.Writer, item interface{}) error {
+	return writeEach(writer, []interface{}{item})
+
+}
+
+func readNetAddr(reader io.Reader, addr *NetAddr, version int32, isVersionCmd bool) error {
 	var err error
 
 	if version >= 31402 && !isVersionCmd {
-		err = parse(reader, &addr.Time)
+		err = read(reader, &addr.Time)
 
 		if err != nil {
 			return err
 		}
 	}
-	err = parseEach(reader, []interface{}{
+	err = readEach(reader, []interface{}{
 		&addr.Service,
 		&addr.IP,
 		&addr.Port,
@@ -88,11 +102,11 @@ func parseNetAddr(reader io.Reader, addr *NetAddr, version int32, isVersionCmd b
 	return err
 }
 
-func parseVarInt(reader io.Reader, l *uint64) error {
+func readVarInt(reader io.Reader, l *uint64) error {
 	var err error
 	var b byte
 
-	err = parse(reader, &b)
+	err = read(reader, &b)
 
 	if err != nil {
 		return err
@@ -101,7 +115,7 @@ func parseVarInt(reader io.Reader, l *uint64) error {
 	switch b {
 	case 0xfd:
 		var i uint16
-		err = parse(reader, &i)
+		err = read(reader, &i)
 
 		if err != nil {
 			return err
@@ -110,7 +124,7 @@ func parseVarInt(reader io.Reader, l *uint64) error {
 		*l = uint64(i)
 	case 0xfe:
 		var i uint32
-		err = parse(reader, &i)
+		err = read(reader, &i)
 
 		if err != nil {
 			return err
@@ -118,7 +132,7 @@ func parseVarInt(reader io.Reader, l *uint64) error {
 
 		*l = uint64(i)
 	case 0xff:
-		err = parse(reader, l)
+		err = read(reader, l)
 
 		if err != nil {
 			return err
@@ -130,11 +144,11 @@ func parseVarInt(reader io.Reader, l *uint64) error {
 	return nil
 }
 
-func parseVarStr(reader io.Reader, str *string) error {
+func readVarStr(reader io.Reader, str *string) error {
 	var err error
 	var l uint64
 
-	err = parseVarInt(reader, &l)
+	err = readVarInt(reader, &l)
 
 	if err != nil {
 		return err
@@ -143,16 +157,16 @@ func parseVarStr(reader io.Reader, str *string) error {
 	buf := make([]byte, l)
 
 	if l > 0 {
-		err = parse(reader, &buf)
+		err = read(reader, &buf)
 	}
 
 	return err
 }
 
-func parseVersionMsg(reader io.Reader, header *VersionCmdHeader) error {
+func readVersionMsg(reader io.Reader, header *VersionCmdHeader) error {
 	var err error
 
-	err = parseEach(reader, []interface{}{
+	err = readEach(reader, []interface{}{
 		&header.Version,
 		&header.Services,
 		&header.Timestamp,
@@ -162,19 +176,19 @@ func parseVersionMsg(reader io.Reader, header *VersionCmdHeader) error {
 		return err
 	}
 
-	err = parseNetAddr(reader, &header.AddrRecv, header.Version, true)
+	err = readNetAddr(reader, &header.AddrRecv, header.Version, true)
 
 	if header.Version < 106 {
 		return err
 	}
 
-	err = parseNetAddr(reader, &header.AddrFrom, header.Version, true)
+	err = readNetAddr(reader, &header.AddrFrom, header.Version, true)
 
 	if err != nil {
 		return err
 	}
 
-	err = parseEach(reader, []interface{}{
+	err = readEach(reader, []interface{}{
 		&header.Nonce,
 	})
 
@@ -182,21 +196,30 @@ func parseVersionMsg(reader io.Reader, header *VersionCmdHeader) error {
 		return err
 	}
 
-	err = parseVarStr(reader, &header.SubversionNum)
+	err = readVarStr(reader, &header.SubversionNum)
 
 	if header.Version < 209 {
 		return err
 	}
 
-	err = parse(reader, &header.StartHeight)
+	err = read(reader, &header.StartHeight)
 
 	return err
 }
 
-func parseMsgHeader(reader io.Reader, header *MsgHeader) error {
+func writeVerackMsg(writer io.Writer, magic uint32) error {
+	return writeMsgHeader(
+		writer,
+		magic,
+		&verackCmdSig,
+		0,
+	)
+}
+
+func readMsgHeader(reader io.Reader, header *MsgHeader) error {
 	var err error
 
-	err = parseEach(reader, []interface{}{
+	err = readEach(reader, []interface{}{
 		&header.Magic,
 		&header.Command,
 		&header.Length,
@@ -211,7 +234,23 @@ func parseMsgHeader(reader io.Reader, header *MsgHeader) error {
 		return nil
 	}
 
-	err = parse(reader, &header.Checksum)
+	err = read(reader, &header.Checksum)
+
+	return err
+}
+
+func writeMsgHeader(writer io.Writer, magic uint32, cmdSig *[12]byte, l uint32) error {
+	var err error
+
+	err = write(writer, &struct {
+		magic  uint32
+		cmdSig [12]byte
+		l      uint32
+	}{
+		magic,
+		*cmdSig,
+		l,
+	})
 
 	return err
 }

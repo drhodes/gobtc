@@ -29,27 +29,29 @@ import (
 type Server struct {
 	waitPeerHandler     chan bool
 	waitListenerHandler chan bool
-	incomingPeers       chan *Peer
+	newPeers            chan *Peer
 	quitingPeers        chan *Peer
 	listener            net.Listener
 	log                 *log.Logger
 	maxPeers            int
+	magic               uint32
 }
 
-func New(addr string) (*Server, error) {
+func NewServer(addr string) (*Server, error) {
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
 
 	s := &Server{
-		make(chan bool),
-		make(chan bool),
-		make(chan *Peer),
-		make(chan *Peer),
-		listener,
-		log.New(os.Stderr, "gobtc: ", log.LstdFlags),
-		10,
+		waitPeerHandler:     make(chan bool),
+		waitListenerHandler: make(chan bool),
+		newPeers:            make(chan *Peer),
+		quitingPeers:        make(chan *Peer),
+		listener:            listener,
+		log:                 log.New(os.Stderr, "gobtc: ", log.LstdFlags),
+		maxPeers:            10,
+		magic:               MAGIC_MAIN,
 	}
 	return s, nil
 }
@@ -57,6 +59,7 @@ func New(addr string) (*Server, error) {
 func (s *Server) Start() {
 	go s.peerHandler()
 	go s.listenerHandler()
+	// TODO: implement peerSeeker
 }
 
 func (s *Server) SetLogger(log *log.Logger) {
@@ -68,6 +71,12 @@ func (s *Server) Wait() {
 	<-s.waitListenerHandler
 }
 
+func (s *Server) AddPeer(peer *Peer) {
+	go func() { s.newPeers <- peer }()
+}
+
+// Manage server peer list.
+// Handle new and quiting peers.
 func (s *Server) peerHandler() {
 	var peers *list.List = list.New()
 	defer func() {
@@ -78,14 +87,14 @@ func (s *Server) peerHandler() {
 	func() {
 		for {
 			select {
-			case peer := <-s.incomingPeers:
+			case peer := <-s.newPeers:
 				if peers.Len() >= s.maxPeers {
 					peer.conn.Close()
 				}
 
 				peers.PushBack(peer)
 				s.log.Printf("Added peer %s", peer.conn.RemoteAddr())
-				go peer.handler()
+				peer.start()
 
 			case peer := <-s.quitingPeers:
 				// TODO: remove peer
@@ -106,16 +115,8 @@ func (s *Server) peerHandler() {
 	}()
 }
 
-func (s *Server) AddPeer(conn net.Conn) {
-	peer := &Peer{
-		s,
-		conn,
-		make(chan bool),
-	}
-	s.incomingPeers <- peer
-}
-
 func (s *Server) listenerHandler() {
+	var err error
 	s.log.Printf("Listening on %s", s.listener.Addr())
 	defer func() {
 		s.waitListenerHandler <- true
@@ -126,6 +127,7 @@ func (s *Server) listenerHandler() {
 		if err != nil {
 			continue
 		}
-		s.AddPeer(conn)
+		s.AddPeer(NewPeer(s, conn, true))
 	}
+	s.log.Printf("Stopped listening on %s. Error: %s", s.listener.Addr(), err)
 }

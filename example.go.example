@@ -32,7 +32,7 @@ var listenAddr = flag.String("addr", ":8333", "listen address")
 
 func main() {
 	flag.Parse()
-	server, err := gobtc.New(*listenAddr)
+	server, err := gobtc.NewServer(*listenAddr)
 	if err != nil {
 		log.Fatalf("Couldn't listen on: %s; err: %s", *listenAddr, err)
 	}

@@ -25,43 +25,88 @@ import (
 	"net"
 )
 
-type msgHandlerFunc func(peer *Peer, header *MsgHeader) error
+type msgReaderFunc func(peer *Peer, header *MsgHeader) error
+type msgWriterFunc func(peer *Peer, data interface{}) error
+
+type outputCall struct {
+	f    msgWriterFunc
+	data interface{}
+}
 
 type Peer struct {
-	server *Server
-	conn   net.Conn
-	quit   chan bool
+	server        *Server
+	conn          net.Conn
+	incoming      bool
+	pendingOutput chan *outputCall
+	quit          chan bool
+	versionKnown  bool
+	version       int32
 }
 
-type SupportedMsg struct {
+type supportedMsg struct {
 	signature [12]byte
-	handler   msgHandlerFunc
+	handler   msgReaderFunc
 }
 
-var supportedMsgs = []SupportedMsg{
+var supportedMsgs = []supportedMsg{
 	{
 		versionCmdSig,
-		handleVersionCmd,
+		handleVersionMsg,
 	},
 }
 
-func handleVersionCmd(peer *Peer, header *MsgHeader) error {
-	cmdHeader := new(VersionCmdHeader)
-
-	err := parseVersionMsg(peer.conn, cmdHeader)
-
-	if err == nil {
-		peer.server.log.Printf("%+v", pretty.Formatter(cmdHeader))
+// Create new Peer from connection.
+// Connection must be already opened.
+func NewPeer(s *Server, conn net.Conn, incoming bool) (peer *Peer) {
+	return &Peer{
+		server:        s,
+		conn:          conn,
+		incoming:      incoming,
+		pendingOutput: make(chan *outputCall),
+		quit:          make(chan bool),
 	}
-
-	return err
 }
 
-func (peer *Peer) handler() {
+// Start handling peer networking
+func (peer *Peer) start() {
+	go peer.inputHandler()
+	go peer.outputHandler()
+
+	if peer.incoming {
+		peer.schedOutput(sendVersionMsg, nil)
+	}
+}
+
+func (peer *Peer) schedOutput(f msgWriterFunc, data interface{}) {
+	go func() {
+		peer.pendingOutput <- &outputCall{
+			f,
+			data,
+		}
+	}()
+}
+
+// Provide serialized output agent, using pending functions channel
+func (peer *Peer) outputHandler() {
+
+mainLoop:
+	for {
+		select {
+		case call := <-peer.pendingOutput:
+			if err := call.f(peer, call.data); err != nil {
+				peer.server.log.Printf("Error %s", err)
+				break mainLoop
+			}
+		}
+	}
+
+}
+
+func (peer *Peer) inputHandler() {
 	var msgHeader MsgHeader
 mainLoop:
 	for {
-		if err := parseMsgHeader(peer.conn, &msgHeader); err != nil {
+		if err := readMsgHeader(peer.conn, &msgHeader); err != nil {
 			break
 		}
 
@@ -82,4 +127,34 @@ mainLoop:
 		break
 	}
 	peer.server.quitingPeers <- peer
+}
+
+func handleVersionMsg(peer *Peer, msgHeader *MsgHeader) error {
+	cmdHeader := new(VersionCmdHeader)
+
+	err := readVersionMsg(peer.conn, cmdHeader)
+
+	if err != nil {
+		return err
+	}
+
+	peer.server.log.Printf("%+v", pretty.Formatter(cmdHeader))
+
+	peer.versionKnown = true
+	peer.version = cmdHeader.Version
+
+	peer.schedOutput(sendVerackMsg, nil)
+
+	return err
+}
+
+func sendVersionMsg(peer *Peer, data interface{}) error {
+	// TODO: implement
+	return nil
+}
+
+func sendVerackMsg(peer *Peer, _ interface{}) error {
+	peer.server.log.Printf("Sending verack")
+	writeVerackMsg(peer.conn, peer.server.magic)
+	return nil
 }
