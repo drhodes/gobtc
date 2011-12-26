@@ -1,3 +1,4 @@
 /example
+/example.go
 *.6
-_obj
+/_obj
