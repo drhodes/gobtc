@@ -107,11 +107,15 @@ func (peer *Peer) inputHandler() {
 mainLoop:
 	for {
 		if err := readMsgHeader(peer.conn, &msgHeader); err != nil {
-			break
+			break mainLoop
 		}
 
 		peer.server.log.Printf("%+v", pretty.Formatter(&msgHeader))
-		// TODO: validate header
+
+		if peer.server.magic != msgHeader.Magic {
+			// TODO: is this gentle enough?
+			break mainLoop
+		}
 
 		for _, command := range supportedMsgs {
 			if bytes.Compare(command.signature[:], msgHeader.Command[:]) == 0 {
@@ -123,8 +127,8 @@ mainLoop:
 				continue mainLoop
 			}
 		}
-		peer.server.log.Printf("unknown command: %s!", msgHeader.Command)
-		break
+		peer.server.log.Printf("unsupported command: %s!", msgHeader.Command)
+		break mainLoop
 	}
 	peer.server.quitingPeers <- peer
 }
